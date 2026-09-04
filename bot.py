@@ -2,11 +2,7 @@ import os
 import threading
 from flask import Flask
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    ContextTypes,
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # --- Flask Server ---
 app_web = Flask(__name__)
@@ -15,6 +11,12 @@ app_web = Flask(__name__)
 @app_web.route("/")
 def home():
   return "Bot is active and running!"
+
+
+def run_flask():
+  port = int(os.environ.get("PORT", 5000))
+  # use_reloader=False zaroori hai threading ke liye
+  app_web.run(host="0.0.0.0", port=port, use_reloader=False)
 
 
 # --- Telegram Bot Code ---
@@ -41,7 +43,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
           ),
       ],
       [
-          InlineKeyboardButton("🎁 Redeem Code", callback_data="redeem_code"),
+          InlineKeyboardButton("🎁 Redeem Code", callback_data="rede_code"),
           InlineKeyboardButton("➕ Add Account", callback_data="add_account"),
       ],
       [
@@ -66,22 +68,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
   )
 
 
-def run_telegram_bot():
-  import asyncio
+if __name__ == "__main__":
+  # 1. Flask server ko background thread mein start karein
+  flask_thread = threading.Thread(target=run_flask, daemon=True)
+  flask_thread.start()
 
-  # Naya event loop set karein taaki threading error na aaye
-  asyncio.set_event_loop(asyncio.new_event_loop())
+  # 2. Telegram Bot ko MAIN thread mein run karein (Error fix ho jayegi)
   app = ApplicationBuilder().token(TOKEN).build()
   app.add_handler(CommandHandler("start", start))
-  print("Telegram Bot is running via polling...")
+  print("Telegram Bot is running smoothly...")
   app.run_polling()
-
-
-if __name__ == "__main__":
-  # Telegram bot ko background thread mein start karein
-  bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
-  bot_thread.start()
-
-  # Flask web server ko main thread par run karein (Render ke liye zaroori hai)
-  port = int(os.environ.get("PORT", 5000))
-  app_web.run(host="0.0.0.0", port=port)
