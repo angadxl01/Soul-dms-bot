@@ -1,4 +1,4 @@
-import os
+  import os
 import sqlite3
 import threading
 from flask import Flask
@@ -26,12 +26,11 @@ def init_db():
             total_sent INTEGER DEFAULT 0
         )
     """)
-  # Sessions table to store user's added phone accounts
   cursor.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
-            phone_number TEXT
+            session_string TEXT
         )
     """)
   conn.commit()
@@ -71,14 +70,13 @@ def count_user_sessions(user_id):
   return count
 
 
-def add_session_to_db(user_id, phone):
+def add_session_string_to_db(user_id, session_str):
   conn = sqlite3.connect("bot_database.db")
   cursor = conn.cursor()
   cursor.execute(
-      "INSERT INTO sessions (user_id, phone_number) VALUES (?, ?)",
-      (user_id, phone),
+      "INSERT INTO sessions (user_id, session_string) VALUES (?, ?)",
+      (user_id, session_str),
   )
-  # Update active sessions count in users table
   cursor.execute(
       "UPDATE users SET active_sessions = active_sessions + 1 WHERE user_id = ?",
       (user_id,),
@@ -104,7 +102,6 @@ def run_flask():
 # --- Telegram Bot Code ---
 TOKEN = "8627528321:AAFSSdgHID0Mizwhx5hxulhIa-CErWR5Yu0"
 user_states = {}
-temp_data = {}
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -172,10 +169,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         " first using Add Session."
     )
   elif data == "add_session":
-    user_states[user_id] = "waiting_for_phone"
+    user_states[user_id] = "waiting_for_session"
     await query.message.reply_text(
-        "🔑 Session Generator\n\nPlease enter your Telegram Phone Number with"
-        " country code.\nExample: +919876543210"
+        "🔑 Add Account Session\n\nPlease send your Pyrogram/Telethon **String"
+        " Session** below to link your account securely.\n\n(Aap session string"
+        " kisi bhi session generator bot se nikal kar yahan bhej sakte hain)."
     )
   elif data == "my_account":
     db_user = get_or_create_user(user_id, first_name)
@@ -208,28 +206,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
   text = update.message.text
   state = user_states.get(user_id)
 
-  if state == "waiting_for_phone":
-    # Phone number mil gaya, ab temporary store karke OTP maangege
-    temp_data[user_id] = {"phone": text}
-    user_states[user_id] = "waiting_for_otp"
-    await update.message.reply_text(
-        f"📲 Phone number {text} received!\n\nTelegram official app par OTP bhej"
-        " diya gaya hai. Kripya apna OTP yahan enter karein (jaise:"
-        " 12345):"
-    )
-
-  elif state == "waiting_for_otp":
-    # OTP mil gaya, session successfully link ho gaya
-    phone = temp_data.get(user_id, {}).get("phone", "Unknown")
-    add_session_to_db(user_id, phone)
-
+  if state == "waiting_for_session":
+    # Session string receive ho gaya, database mein save kar do
     user_states[user_id] = None
-    if user_id in temp_data:
-      del temp_data[user_id]
+    add_session_string_to_db(user_id, text)
 
     await update.message.reply_text(
-        f"✅ Account Successfully Connected!\n\nPhone: {phone}\nSession node"
-        " activated successfully. Ab aap Mass DM campaign chala sakte hain!"
+        "✅ Account Session Added Successfully!\n\nAapka account node secure tareeqe"
+        " se link ho gaya hai. Ab aap 'My Account' mein active session check"
+        " kar sakte hain."
     )
   else:
     await update.message.reply_text(
@@ -248,5 +233,5 @@ if __name__ == "__main__":
       MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
   )
 
-  print("Interactive Account Login Bot is running...")
+  print("Session String Bot is running...")
   app.run_polling()
