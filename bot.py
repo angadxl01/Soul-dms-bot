@@ -3,6 +3,7 @@ import sqlite3
 import threading
 from flask import Flask
 from telethon import TelegramClient
+from telethon.errors import SessionPasswordNeededError
 from telethon.sessions import StringSession
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -14,9 +15,9 @@ from telegram.ext import (
     filters,
 )
 
-# --- Telegram API Credentials (Added Successfully) ---
 API_ID = 36645562
 API_HASH = "ccad405579d80b82492abbf4a7777907"
+
 
 # --- Database Setup ---
 def init_db():
@@ -191,42 +192,37 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
   user_id = update.effective_user.id
-  text = update.message.text
+  text = update.message.text.strip()
   state = user_states.get(user_id)
 
   if state == "waiting_for_phone":
-    phone = text.strip()
     client = TelegramClient(StringSession(), API_ID, API_HASH)
-    await client.connect()
-
     try:
-      sent = await client.send_code_request(phone)
+      await client.connect()
+      sent = await client.send_code_request(text)
       temp_data[user_id] = {
           "client": client,
-          "phone": phone,
+          "phone": text,
           "phone_code_hash": sent.phone_code_hash,
       }
       user_states[user_id] = "waiting_for_otp"
       await update.message.reply_text(
-          f"✅ OTP sent successfully to {phone}!\n\nPlease check your official"
-          " Telegram app and enter the OTP code here (e.g., 12345):"
+          f"✅ OTP sent successfully to {text}!\n\nPlease check your official"
+          " Telegram app and enter the OTP code here:"
       )
     except Exception as e:
       await client.disconnect()
       user_states[user_id] = None
       await update.message.reply_text(
-          f"❌ Error sending OTP: {str(e)}\nPlease try again or check your"
-          " number."
+          f"❌ Error sending OTP: {str(e)}\nPlease try again."
       )
 
   elif state == "waiting_for_otp":
-    otp = text.strip()
     data = temp_data.get(user_id)
-
     if not data:
       user_states[user_id] = None
       await update.message.reply_text(
-          "Session expired. Please start over by clicking 'Add Session'."
+          "Session expired. Please click 'Add Session' again."
       )
       return
 
@@ -235,9 +231,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone_code_hash = data["phone_code_hash"]
 
     try:
-      await client.sign_in(
-          phone=phone, code=otp, phone_code_hash=phone_code_hash
-      )
+      await client.sign_in(phone=phone, code=text, phone_code_hash=phone_code_hash)
+
       session_string = client.session.save()
       await client.disconnect()
 
@@ -260,14 +255,63 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       del temp_data[user_id]
 
       await update.message.reply_text(
-          f"🎉 Success! Account {phone} has been successfully connected and"
-          " saved to your profile nodes."
+          f"🎉 Success! Account {phone} has been successfully connected!"
+      )
+
+    except SessionPasswordNeededError:
+      user_states[user_id] = "waiting_for_2fa"
+      await update.message.reply_text(
+          "🔒 Aapke account par Two-Step Verification (2FA) password on hai."
+          " Kripya apna 2FA password yahan bhejein:"
       )
     except Exception as e:
       await update.message.reply_text(
-          f"❌ Invalid OTP or 2FA error: {str(e)}\nPlease re-enter the correct"
-          " OTP:"
+          f"❌ Invalid OTP error: {str(e)}\nKripya sahi OTP dobara bhejein:"
       )
+
+  elif state == "waiting_for_2fa":
+    data = temp_data.get(user_id)
+    if not data:
+      user_states[user_id] = None
+      await update.message.reply_text(
+          "Session expired. Please click 'Add Session' again."
+      )
+      return
+
+    client = data["client"]
+    phone = data["phone"]
+
+    try:
+      await client.sign_in(password=text)
+      session_string = client.session.save()
+      await client.disconnect()
+
+      conn = sqlite3.connect("bot_database.db")
+      cursor = conn.cursor()
+      cursor.execute(
+          "INSERT INTO sessions (user_id, phone_number, session_string) VALUES"
+          " (?, ?, ?)",
+          (user_id, phone, session_string),
+      )
+      cursor.execute(
+          "UPDATE users SET active_sessions = active_sessions + 1 WHERE user_id"
+          " = ?",
+          (user_id,),
+      )
+      conn.commit()
+      conn.close()
+
+      user_states[user_id] = None
+      del temp_data[user_id]
+
+      await update.message.reply_text(
+          f"🎉 Success! Account {phone} (with 2FA) connected successfully!"
+      )
+    except Exception as e:
+      await update.message.reply_text(
+          f"❌ Galat Password: {str(e)}\nKripya sahi 2FA password dobara bhejein:"
+      )
+
   else:
     await update.message.reply_text(
         "Please use the menu buttons or send /start."
@@ -285,5 +329,5 @@ if __name__ == "__main__":
       MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
   )
 
-  print("Telethon OTP Login Bot with Custom API is running...")
+  print("Telethon 2FA Supported OTP Bot is running...")
   app.run_polling()
