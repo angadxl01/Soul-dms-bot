@@ -1,14 +1,14 @@
 import os
+import threading
 from flask import Flask
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationBuilder,
-    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
 )
 
-# --- Flask Server (Render free tier ko active rakhne ke liye) ---
+# --- Flask Server ---
 app_web = Flask(__name__)
 
 
@@ -66,20 +66,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
   )
 
 
-def run_bot():
+def run_telegram_bot():
+  import asyncio
+
+  # Naya event loop set karein taaki threading error na aaye
+  asyncio.set_event_loop(asyncio.new_event_loop())
   app = ApplicationBuilder().token(TOKEN).build()
   app.add_handler(CommandHandler("start", start))
-  print("Bot is running...")
+  print("Telegram Bot is running via polling...")
   app.run_polling()
 
 
 if __name__ == "__main__":
-  import threading
+  # Telegram bot ko background thread mein start karein
+  bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
+  bot_thread.start()
 
-  # Bot ko background thread mein chalayein
-  t = threading.Thread(target=run_bot)
-  t.start()
-
-  # Flask server ko port par run karein (Render ke liye zaruri hai)
+  # Flask web server ko main thread par run karein (Render ke liye zaroori hai)
   port = int(os.environ.get("PORT", 5000))
   app_web.run(host="0.0.0.0", port=port)
