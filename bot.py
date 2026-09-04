@@ -7,6 +7,8 @@ from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
+    MessageHandler,
+    filters,
 )
 
 # --- Flask Server ---
@@ -25,6 +27,9 @@ def run_flask():
 
 # --- Telegram Bot Code ---
 TOKEN = "8627528321:AAFSSdgHID0Mizwhx5hxulhIa-CErWR5Yu0"
+
+# User states track karne ke liye dictionary (Jaise Account add karte waqt phone number lena)
+user_states = {}
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -76,70 +81,77 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
   query = update.callback_query
   await query.answer()
-
   data = query.data
+  user_id = query.from_user.id
 
   if data == "start_campaign":
     await query.message.reply_text(
-        "🚀 Mass DM Campaign feature par kaam chal raha hai. Jald hi yeh active"
-        " hoga!"
+        "🚀 **Mass DM Campaign**\n\nApna campaign shuru karne ke liye pehle"
+        " message set karein aur Account add karein. Phir target usernames ki"
+        " list bhejiye."
     )
-  elif data == "set_message":
-    await query.message.reply_text(
-        "✉️ Apni message yahan set karne ke liye text bhejiye."
-    )
-  elif data == "preview_message":
-    await query.message.reply_text(
-        "👁️ Aapne abhi tak koi message set nahi kiya hai."
-    )
-  elif data == "my_account":
-    user = query.from_user
-    await query.message.reply_text(
-        f"👤 **Account Details**:\n- ID: {user.id}\n- Plan: Free\n- Accounts"
-        " Added: 0"
-    )
-  elif data == "go_vip_premium":
-    await query.message.reply_text(
-        "👑 VIP Premium lene ke liye admin se संपर्क (contact) karein."
-    )
-  elif data == "redeem_code":
-    await query.message.reply_text(
-        "🎁 Apna redeem code yahan bhejiye (e.g., /redeem YOUR_CODE)."
-    )
+
   elif data == "add_account":
+    user_states[user_id] = "waiting_for_phone"
     await query.message.reply_text(
-        "➕ Naya account add karne ke liye session string ya phone number"
-        " dein."
+        "➕ **Add Account**\n\nKripya apne Telegram account ka **Phone Number**"
+        " country code ke sath bhejiye (Jaise: `+919876543210`)."
     )
-  elif data == "remove_account":
+
+  elif data == "my_account":
     await query.message.reply_text(
-        "➖ Remove karne ke liye koi account available nahi hai."
+        f"👤 **Account Details**:\n- ID: {user_id}\n- Active Accounts: 0"
     )
-  elif data == "join_request_dm":
-    await query.message.reply_text(
-        "👥 Join Request DM feature enable/disable karne ke liye option"
-        " chuniye."
-    )
+
   elif data == "how_to_use":
     await query.message.reply_text(
-        "📖 **How to Use**:\n1. Pehle account add karein.\n2. Phir message set"
-        " karein.\n3. Mass DM campaign start karein!"
+        "📖 **How to Use**:\n1. 'Add Account' par click karke apna account"
+        " jodiein.\n2. 'Set Message' se apna text set karein.\n3. 'Start Mass"
+        " DM' se campaign run karein."
     )
+
   elif data == "support":
     await query.message.reply_text(
-        "🛠️ Kisi bhi madad ke liye support team se contact karein: @Support"
+        "🛠️ Support ke liye admin se contact karein: @Support"
+    )
+
+  else:
+    await query.message.reply_text(
+        f"⚙️ Feature '{data}' par abhi kaam chal raha hai."
+    )
+
+
+# --- Text Message Handler (Phone number / inputs lene ke liye) ---
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+  user_id = update.effective_user.id
+  text = update.message.text
+
+  # Check karein ki user account add kar raha hai ya nahi
+  if user_states.get(user_id) == "waiting_for_phone":
+    user_states[user_id] = None  # State clear karein
+    await update.message.reply_text(
+        f"✅ Phone number received: `{text}`\n\nAbhi yeh demo mode mein hai,"
+        " session string generate karne ke liye API ID aur API Hash ki zaroorat"
+        " hoti hai. Jald hi iska full automated setup jud jayega!"
+    )
+  else:
+    await update.message.reply_text(
+        "Kripya menu use karne ke liye /start command bhejiye."
     )
 
 
 if __name__ == "__main__":
-  # Flask server ko background thread mein start karein
+  # Flask server background thread mein
   flask_thread = threading.Thread(target=run_flask, daemon=True)
   flask_thread.start()
 
-  # Telegram Bot ko main thread par run karein
+  # Telegram Bot main thread par
   app = ApplicationBuilder().token(TOKEN).build()
   app.add_handler(CommandHandler("start", start))
   app.add_handler(CallbackQueryHandler(button_handler))
+  app.add_handler(
+      MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+  )
 
-  print("Telegram Bot with features is running smoothly...")
+  print("Bot is running with Add Account & Mass DM features...")
   app.run_polling()
