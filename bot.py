@@ -18,7 +18,7 @@ def home():
 
 
 # --- Telegram Bot Code ---
-TOKEN = os.getenv("BOT_TOKEN")  # Render ke Environment Variable se token uthayega
+TOKEN = os.getenv("8627528321:AAFSSdgHID0Mizwhx5hxulhIa-CErWR5Yu0")  # Render ke Environment Variable se token uthayega
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
